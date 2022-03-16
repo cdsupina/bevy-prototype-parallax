@@ -1,7 +1,7 @@
 use crate::window_size::WindowSize;
 use bevy::{prelude::*, render::camera::Camera};
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Component)]
 pub struct Layer {
     pub speed: f32,
 }
@@ -12,14 +12,14 @@ pub struct LayerBundle {
     pub transform: Transform,
     pub global: GlobalTransform,
     pub children: Children,
-    pub material: Handle<ColorMaterial>,
+    pub texture: Handle<Image>,
     pub sprite: Sprite,
 }
 
 /// Gets the 'screen' width of the sprite.
 /// This takes into account the scaling
 fn sprite_scaled_width(sprite: &Sprite, transform: &Transform) -> f32 {
-    sprite.size[0] * transform.scale.x
+    sprite.custom_size.unwrap()[0] * transform.scale.x
 }
 
 /// Calculate the amount of sprites we need for the effect
@@ -35,8 +35,7 @@ fn desired_children_count(window: &WindowSize, sprite: &Sprite, transform: &Tran
 /// Caculates an offset to put the layer at the left edge of the 'container'
 /// This is because the camera seems to center on 0.0
 fn camera_left_edge_offset(window: &WindowSize) -> f32 {
-    let left_side = 0.0 - window.width as f32 / 2.0;
-    left_side
+    0.0 - window.width as f32 / 2.0
 }
 
 /// How far to offset the layer due to the camera position
@@ -60,8 +59,8 @@ fn move_layer_position(
     sprite: &Sprite,
     layer: &Layer,
     transform: &mut Transform,
-) -> () {
-    let offset = camera_left_edge_offset(&window);
+) {
+    let offset = camera_left_edge_offset(window);
     let camera_x = camera_sprite_offset(camera, layer, sprite, transform);
 
     transform.translation.x = offset + camera_x;
@@ -78,23 +77,24 @@ pub fn children_count_system(
             &Parent,
             &Children,
             &Sprite,
-            &Handle<ColorMaterial>,
+            &Handle<Image>,
             &Transform,
         ),
         With<Layer>,
     >,
 ) {
-    for (entity, parent, children, sprite, material, transform) in layer_query.iter_mut() {
+    for (entity, parent, children, sprite, texture, transform) in layer_query.iter_mut() {
         if let Ok(window) = cameras_query.get_component(parent.0) {
-            let desired_children = desired_children_count(&window, &sprite, &transform);
+            let desired_children = desired_children_count(window, sprite, transform);
             let current_children = children.len();
             let to_add = desired_children as usize - current_children;
 
             for _ in 0..to_add {
                 commands
                     .spawn_bundle(SpriteBundle {
-                        material: material.clone(),
+                        //material: material.clone(),
                         sprite: Sprite::default(),
+                        texture: texture.clone(),
                         ..Default::default()
                     })
                     .insert(Parent(entity));
@@ -125,7 +125,7 @@ pub fn children_layout_system(
 pub fn layer_movement_system(
     cameras: Query<(&Transform, &WindowSize, &Children), With<Camera>>,
     mut layers: Query<(&Layer, &Sprite, &mut Transform), Without<Camera>>,
-) -> () {
+) {
     for (transform, window, children) in cameras.iter() {
         let camera = transform.translation;
         for child in children.iter() {
@@ -150,7 +150,7 @@ mod tests {
     fn test_left_edge(width: f32, expected: f32) {
         let window = WindowSize {
             height: 576.0,
-            width: width,
+            width,
         };
         let result = camera_left_edge_offset(&window);
         assert_eq!(expected, result);
@@ -170,7 +170,11 @@ mod tests {
     )]
     fn test_layer_offset(camera: f32, speed: f32, sprite: f32, expected: f32) {
         let camera = Vec3::new(camera, 0.0, 0.0);
-        let sprite = Sprite::new(Vec2::splat(sprite));
+        //let sprite = Sprite::new(Vec2::splat(sprite));
+        let sprite = Sprite {
+            custom_size: Some(Vec2::splat(sprite)),
+            ..Default::default()
+        };
         let transform = Transform::default();
         let layer = Layer { speed };
         let result = camera_sprite_offset(&camera, &layer, &sprite, &transform);
@@ -192,7 +196,11 @@ mod tests {
             scale: Vec3::splat(scale),
             ..Default::default()
         };
-        let sprite = Sprite::new(Vec2::splat(sprite));
+        //let sprite = Sprite::new(Vec2::splat(sprite));
+        let sprite = Sprite {
+            custom_size: Some(Vec2::splat(sprite)),
+            ..Default::default()
+        };
         let result = sprite_scaled_width(&sprite, &transform);
         assert_eq!(expected, result);
     }
@@ -219,8 +227,12 @@ mod tests {
             ..Default::default()
         };
 
-        let texture = Sprite::new(Vec2::new(texture as f32, window.height as f32));
-        let result = desired_children_count(&window, &texture, &transform);
+        //let texture = Sprite::new(Vec2::new(texture as f32, window.height as f32));
+        let sprite = Sprite {
+            custom_size: Some(Vec2::new(texture as f32, window.height as f32)),
+            ..Default::default()
+        };
+        let result = desired_children_count(&window, &sprite, &transform);
         assert_eq!(expected, result);
     }
 
@@ -243,7 +255,11 @@ mod tests {
 
         let camera = Vec3::new(camera, 0.0, 0.0);
         let speed = Layer { speed };
-        let sprite = Sprite::new(Vec2::new(sprite, window_size.height as f32));
+        //let sprite = Sprite::new(Vec2::new(sprite, window_size.height as f32));
+        let sprite = Sprite {
+            custom_size: Some(Vec2::new(sprite, window_size.height as f32)),
+            ..Default::default()
+        };
         let mut transform = Transform::default();
         move_layer_position(&window_size, &camera, &sprite, &speed, &mut transform);
         assert_eq!(expected, transform.translation.x);

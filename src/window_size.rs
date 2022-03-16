@@ -4,7 +4,7 @@ use bevy::{prelude::*, render::camera::Camera};
 
 /// Simple struct storing the height and width of the window.
 /// Hopefully this may be integrated into bevy in future.
-#[derive(Default)]
+#[derive(Default, Component)]
 pub struct WindowSize {
     pub height: f32,
     pub width: f32,

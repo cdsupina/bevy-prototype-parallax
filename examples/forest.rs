@@ -1,8 +1,10 @@
 use std::f32::consts::PI;
 
 use bevy::{prelude::*, render::camera::Camera};
+use bevy_inspector_egui::WorldInspectorPlugin;
 use bevy_prototype_parallax::{Layer, LayerBundle, ParallaxPlugin, WindowSize};
 
+#[derive(Component)]
 struct Player {
     pub run: Handle<TextureAtlas>,
     pub idle: Handle<TextureAtlas>,
@@ -18,11 +20,12 @@ fn main() {
         ..Default::default()
     };
 
-    App::build()
+    App::new()
         .insert_resource(window)
         .add_plugins(DefaultPlugins)
-        .add_startup_system(setup_parallax.system())
-        .add_startup_system(setup_character.system())
+        .add_plugin(WorldInspectorPlugin::new())
+        .add_startup_system(setup_parallax.system().label("parallax"))
+        .add_startup_system(setup_character.system().after("parallax"))
         .add_system(move_character_system.system())
         .add_system(follow_player_camera.system())
         .add_system(animate_sprite_system.system())
@@ -31,28 +34,23 @@ fn main() {
 }
 
 /// Set up our background layers
-fn setup_parallax(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
+fn setup_parallax(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Helper that loads an asset as a parallax layer
     // layers should have different speeds to achieve the effect
-    let mut layer = |path: &str, speed: f32| -> LayerBundle {
-        let handle = {
-            let handle = asset_server.load(path);
-            let color = materials.add(handle.into());
-            color
-        };
+    let layer = |path: &str, speed: f32, z: f32| -> LayerBundle {
+        let texture = asset_server.load(path);
+        let image_size = imagesize::size(format!("assets/{}", path)).unwrap();
+
         LayerBundle {
-            layer: Layer {
-                speed: speed,
-                ..Default::default()
-            },
-            material: handle,
+            layer: Layer { speed },
+            texture,
             transform: Transform {
                 scale: Vec3::new(4.0, 4.5, 1.0),
-                translation: Vec3::new(0.0, 0.0, 0.0),
+                translation: Vec3::new(0.0, 0.0, z),
+                ..Default::default()
+            },
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(image_size.width as f32, image_size.height as f32)),
                 ..Default::default()
             },
             ..Default::default()
@@ -66,11 +64,13 @@ fn setup_parallax(
         .with_children(|cb| {
             // Spawn the layers.
             // We can have as many as we like
-            cb.spawn_bundle(layer("parallax-forest-back-trees.png", 0.0));
-            cb.spawn_bundle(layer("parallax-forest-lights.png", 0.05));
-            cb.spawn_bundle(layer("parallax-forest-middle-trees.png", 0.1));
-            cb.spawn_bundle(layer("parallax-forest-front-trees.png", 0.2));
+            cb.spawn_bundle(layer("parallax-forest-back-trees.png", 0.0, 2.0));
+            cb.spawn_bundle(layer("parallax-forest-lights.png", 0.05, 3.0));
+            cb.spawn_bundle(layer("parallax-forest-middle-trees.png", 0.1, 4.0));
+            cb.spawn_bundle(layer("parallax-forest-front-trees.png", 0.2, 5.0));
         });
+
+    commands.spawn_bundle(UiCameraBundle::default());
 }
 
 /// Spawns our character and loads it's resources
@@ -96,7 +96,7 @@ fn setup_character(
             texture_atlas: player.idle.clone(),
             transform: Transform {
                 scale: Vec3::new(25.0, 25.0, 1.0),
-                translation: Vec3::new(0.0, -220.0, 1.0),
+                translation: Vec3::new(0.0, -220.0, 1000.5),
                 ..Default::default()
             },
             ..Default::default()
@@ -114,7 +114,7 @@ fn animate_sprite_system(
     for (mut timer, mut sprite, texture_atlas_handle) in query.iter_mut() {
         if timer.tick(time.delta()).finished() {
             let texture_atlas = texture_atlases.get(texture_atlas_handle).unwrap();
-            sprite.index = ((sprite.index as usize + 1) % texture_atlas.textures.len()) as u32;
+            sprite.index = (sprite.index as usize + 1) % texture_atlas.textures.len();
         }
     }
 }
@@ -127,11 +127,11 @@ fn move_character_system(
     for (player, mut transform, mut atlas) in query.iter_mut() {
         if keyboard_input.pressed(KeyCode::A) {
             transform.translation.x += -1.0 * 5.0;
-            transform.rotation = Quat::from_rotation_y(PI).into();
+            transform.rotation = Quat::from_rotation_y(PI);
             *atlas = player.run.clone();
         } else if keyboard_input.pressed(KeyCode::D) {
             transform.translation.x += 1.0 * 5.0;
-            transform.rotation = Quat::from_rotation_y(0.0).into();
+            transform.rotation = Quat::from_rotation_y(0.0);
             *atlas = player.run.clone();
         } else {
             *atlas = player.idle.clone();
